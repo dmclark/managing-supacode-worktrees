@@ -11,6 +11,8 @@ Amp—to use that workflow and verify both Supacode and Git state.
 ## What it does
 
 - Creates sidebar-visible worktrees with `supacode repo worktree-new`.
+- Moves the active Amp thread into the new worktree and starts a fresh thread
+  in the source worktree.
 - Checks out pull-request and feature branches without switching the primary
   repository checkout.
 - Verifies registration through both `supacode worktree list` and
@@ -31,7 +33,7 @@ Confirm the CLI is available:
 
 ```bash
 command -v supacode
-supacode --version
+supacode help
 ```
 
 ## Install globally
@@ -85,5 +87,10 @@ supacode repo worktree-new \
 
 Do not substitute `git worktree add`. A plain Git worktree can be valid in
 Git while remaining invisible to Supacode.
+
+After creating and verifying the worktree, the skill prepares two tabs: the
+destination resumes the active Amp thread, then `/new` switches the existing
+source Amp session to a fresh thread. The source Supacode tab remains open
+throughout.
 
 See [`SKILL.md`](./SKILL.md) for the complete workflow and safety rules.
