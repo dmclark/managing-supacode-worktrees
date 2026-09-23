@@ -1,7 +1,7 @@
 ---
 name: managing-supacode-worktrees
-description: "Creates, reviews, archives, and deletes Supacode-managed Git worktrees through the supacode CLI so the sidebar stays synchronized, moves the active Amp thread into its new worktree, and leaves a fresh Amp thread in the source worktree. Use when a user asks Puck or Supacode to create a worktree, check out a PR or branch locally, manage a worktree under ~/.supacode, or fix a worktree missing from the Supacode sidebar."
-compatibility: "Requires the Supacode CLI and a repository registered with Supacode."
+description: "Creates, reviews, archives, and deletes Supacode-managed Git worktrees, registers verified worktrees with the canonical multi-directory Amp runner, and prepares exact-directory thread handoffs. Use when Puck or Supacode needs to create a worktree, check out a branch locally, manage a worktree under ~/.supacode, or repair sidebar or runner registration."
+compatibility: "Requires the Supacode CLI, a repository registered with Supacode, and an Amp runner named runner-1 with multi-directory support."
 ---
 
 # Managing Supacode worktrees
@@ -23,17 +23,22 @@ with Supacode.
   branch whose remote equivalence is not proven.
 - Keep the repository's primary/runtime checkout untouched unless the user
   explicitly asks to change it.
-- When the current Amp task moves to a new worktree, continue that thread in
-  the destination and run `/new` in the existing source Amp session. Do not
-  close or replace the source Supacode tab.
+- Use the canonical multi-directory Amp runner named `runner-1`. Never start a
+  replacement runner or silently fall back to a different runner.
+- Create new implementation threads on `runner-1` with `working_directory`
+  equal to the exact verified worktree path. Do not move a thread by opening a
+  Supacode tab, running `amp threads continue`, or submitting `/new` to another
+  Amp session.
 
 ## Discover the repository
 
-1. Confirm the CLI is available:
+1. Confirm both CLIs are available:
 
    ```bash
    command -v supacode
    supacode help
+   command -v amp
+   amp runner --help
    ```
 
 2. List Supacode repository IDs:
@@ -65,18 +70,6 @@ Choose:
 - `name`: a short folder name such as `pr-16-review`;
 - `location`: normally `~/.supacode/repos/<repository-name>`.
 
-If the current Amp task will move to this worktree, capture the source IDs and
-thread before creating or focusing anything. Set `thread_id` from the current
-session's Amp Thread URL or ID supplied by the runtime. Do not use `amp last`:
-it can select an unrelated thread.
-
-```bash
-source_worktree_id=$SUPACODE_WORKTREE_ID
-source_tab_id=$SUPACODE_TAB_ID
-source_surface_id=$SUPACODE_SURFACE_ID
-thread_id='T-...'
-```
-
 The command prints the encoded ID of the new worktree. Capture that output:
 
 ```bash
@@ -107,7 +100,7 @@ checked out, has no unique commits, and exactly matches the intended remote
 tip. Delete and let Supacode recreate it only when the user has authorized that
 replacement; otherwise choose a distinct review branch name.
 
-## Verify registration and move the Amp thread
+## Verify and register the worktree
 
 Successful filesystem creation is not sufficient. Verify all three layers:
 
@@ -122,56 +115,37 @@ must appear in `git worktree list`, and the worktree must be on the intended
 branch/commit. Registered Supacode worktrees normally appear as locked in
 `git worktree list`.
 
-Report the path, branch, commit, tracking remote, cleanliness, and confirmation
-that the primary checkout was unchanged.
-
-### Move the active thread and reset the source session
-
-Create a destination tab for the current thread, then submit `/new` to the
-existing source Amp surface. This keeps the same Supacode tab open while
-switching it to a fresh thread.
-
-After `worktree_id` has been created and verified, identify its bootstrap tab.
-Wait for any required setup command running there to finish before closing it.
-Give the source session a moment to process `/new` before the destination
-attaches to the previous thread.
+After all Supacode and Git checks pass, canonicalize the path, require the
+canonical runner to be available, add the path, and verify that the runner's
+directory list contains that exact canonical path:
 
 ```bash
-bootstrap_tab_id=$(
-  supacode tab list --worktree "$worktree_id" | head -n 1
-)
+runner_id=runner-1
+worktree_path=$(cd "$worktree_path" && pwd -P) || exit 1
 
-destination_command="sleep 1; exec amp threads continue '$thread_id'"
+amp runner dirs list --runner-id "$runner_id" >/dev/null || exit 1
+amp runner dirs add --runner-id "$runner_id" "$worktree_path" || exit 1
 
-destination_tab_id=$(
-  supacode tab new \
-    --worktree "$worktree_id" \
-    --input "$destination_command"
-)
+served_paths=$(
+  amp runner dirs list --runner-id "$runner_id" |
+    sed -n 's/^  //p' |
+    sed -E 's/ \([^)]*\)$//' |
+    sed "s#^~/#$HOME/#"
+) || exit 1
 
-supacode surface focus \
-  --worktree "$source_worktree_id" \
-  --tab "$source_tab_id" \
-  --surface "$source_surface_id" \
-  --input "/new"
-
-if [ "$bootstrap_tab_id" != "$destination_tab_id" ]; then
-  supacode tab close \
-    --worktree "$worktree_id" \
-    --tab "$bootstrap_tab_id"
-fi
-
-supacode worktree focus --worktree "$worktree_id"
-supacode tab focus \
-  --worktree "$worktree_id" \
-  --tab "$destination_tab_id"
+printf '%s\n' "$served_paths" | grep -Fqx "$worktree_path" || exit 1
 ```
 
-`supacode surface focus --input` submits `/new` to the existing Amp TUI; it does
-not close the source terminal. Perform it only after the destination tab exists
-and make it the last source-session action. Closing the destination bootstrap
-tab is safe only after any required setup has completed. If the destination
-cannot be created, leave the source session unchanged and report the error.
+Stop on any failure. Do not start another runner, choose another runner ID, or
+create the implementation thread until exact-path registration succeeds.
+
+When delegating the implementation, create a new thread with executor
+`runner`, runner ID `runner-1`, and `working_directory` set to
+`$worktree_path`. Verify the new thread reports that exact working directory
+before allowing edits. Do not continue the source thread into the destination.
+
+Report the path, branch, commit, tracking remote, cleanliness, exact runner
+registration, and confirmation that the primary checkout was unchanged.
 
 ## Repair an unregistered plain Git worktree
 

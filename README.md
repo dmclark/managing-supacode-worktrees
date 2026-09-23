@@ -11,8 +11,10 @@ Amp—to use that workflow and verify both Supacode and Git state.
 ## What it does
 
 - Creates sidebar-visible worktrees with `supacode repo worktree-new`.
-- Moves the active Amp thread into the new worktree and starts a fresh thread
-  in the source worktree.
+- Registers each verified worktree with the canonical multi-directory Amp
+  runner named `runner-1`.
+- Directs Puck and other coordinators to create a new thread on `runner-1` with
+  its `working_directory` set to the exact served worktree path.
 - Checks out pull-request and feature branches without switching the primary
   repository checkout.
 - Verifies registration through both `supacode worktree list` and
@@ -27,13 +29,16 @@ Amp—to use that workflow and verify both Supacode and Git state.
 
 - [Supacode](https://supacode.sh/) with its `supacode` CLI on `PATH`.
 - A Git repository registered with Supacode.
+- A running Amp runner named `runner-1` with multi-directory support.
 - An agent runtime that supports the Agent Skills directory convention.
 
-Confirm the CLI is available:
+Confirm both CLIs are available:
 
 ```bash
 command -v supacode
 supacode help
+command -v amp
+amp runner --help
 ```
 
 ## Install globally
@@ -88,9 +93,14 @@ supacode repo worktree-new \
 Do not substitute `git worktree add`. A plain Git worktree can be valid in
 Git while remaining invisible to Supacode.
 
-After creating and verifying the worktree, the skill prepares two tabs: the
-destination resumes the active Amp thread, then `/new` switches the existing
-source Amp session to a fresh thread. The source Supacode tab remains open
-throughout.
+After Supacode and Git verification succeeds, the skill registers the exact
+canonical path with `runner-1` and checks that `amp runner dirs list` reports
+that path. It fails closed if the canonical runner is unavailable and never
+starts a replacement runner.
+
+Puck or another coordinator then creates a new thread on `runner-1` with
+`working_directory` equal to the served worktree path. The workflow does not
+open a destination Supacode tab, continue the source Amp thread, or submit
+`/new` to another Amp session.
 
 See [`SKILL.md`](./SKILL.md) for the complete workflow and safety rules.
